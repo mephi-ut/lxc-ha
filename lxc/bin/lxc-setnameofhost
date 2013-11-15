@@ -1,0 +1,21 @@
+#!/bin/bash
+
+if [ "$1" != "" ]; then
+	if ! [ -d "/srv/lxc/$1/rootfs" ]; then
+		echo "There's no such container: <$1>" >&2
+		exit -1
+	fi
+	hosts="$1"
+else
+	hosts="$(lxc-runned)"
+fi
+
+hostname=$(hostname)
+for host in $hosts; do
+	cd /srv/lxc/$host/rootfs > /dev/null
+	echo $hostname > etc/rhostname
+	cd - >/dev/null
+done
+
+exit 0
+

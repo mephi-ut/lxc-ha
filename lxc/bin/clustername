@@ -1,0 +1,4 @@
+#!/bin/bash
+
+exec awk '{if($1 == "group") {print $2; exit 0;}}' < /etc/csync2/csync2.cfg
+

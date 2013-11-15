@@ -1,0 +1,35 @@
+#!/bin/bash
+PATH=/opt/lxc/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+#LXC_CONF_DIR=$(grep "^[ ]*LXC_CONF_DIR:[ ]*'[^'][^']*'" /etc/lxctl/lxctl.yaml | awk -F "'" '{print $2}')
+
+#until [ -z "$1" ]; do
+#	arg=$1
+#	args="$args '$arg'"
+#	shift
+#done
+
+until [ -z "$1" ]; do
+	arg=$1
+	case "$arg" in
+		-n)
+			nextisname=1
+			;;
+		--name)
+			nextisname=1
+			;;
+		*)
+			if [ "$nextisname" -ne '0' ]; then
+				cname="$arg"
+				nextisname=0
+			fi
+			CONTAINER="$arg"
+			;;
+	esac
+	args="$args '$arg'"
+	shift
+done
+
+eval "/usr/sbin/lxc-stop $args"
+lxc-clsync-startstop "$CONTAINER"
+

@@ -1,0 +1,5 @@
+#!/bin/bash
+CONTAINER="$1"
+
+lxc-info -n "${CONTAINER}" 2>/dev/null | awk '{if($1=="state:") print $2 }'
+

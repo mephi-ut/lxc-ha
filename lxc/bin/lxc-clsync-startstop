@@ -1,0 +1,37 @@
+#!/bin/bash
+PATH="/opt/lxc/bin:$PATH"
+
+if [ ! -x "$(which lxc-info 2>/dev/null)" ]; then
+	echo "E: lxc-info - no such file" >&2
+	exit 1
+fi
+
+clsync_startstop() {
+	CONTAINER="$1"
+	STATE=$(lxc-status "${CONTAINER}")
+	case "$STATE" in
+		RUNNING)
+			lxc-clsync-start "${CONTAINER}" 2>/dev/null
+			;;
+		FROZEN)
+			lxc-clsync-stop "${CONTAINER}"  2>/dev/null
+			;;
+		STOPPED)
+			lxc-clsync-stop "${CONTAINER}"  2>/dev/null
+			;;
+		*)
+			echo "Unknown lxc status \"${STATUS}\" of container \"${CONTAINER}\"!" >&2
+			;;
+	esac
+	return
+}
+
+if [ "$1" != "" ]; then
+	clsync_startstop "$1"
+	exit 0
+fi
+
+for CONTAINER in $(lxc-ls); do
+	clsync_startstop "${CONTAINER}"
+done
+

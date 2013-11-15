@@ -1,0 +1,72 @@
+#!/bin/bash -x
+PATH=/opt/lxc/bin:/usr/lib/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin
+
+BROTHER=$(brothername)
+SSHOPTS='
+-o TCPKeepAlive=yes
+-o ControlMaster=auto
+-o ControlPath=~/.ssh/master-%r@%h:%p
+-o ConnectTimeout=1
+'
+
+NOSSH=0
+if [ "$(ssh -o ConnectTimeout=1 -o ControlMaster=no "getroot@$BROTHER" echo CHECK 2>/dev/null)" != "CHECK" ]; then
+	NOSSH=1
+fi
+
+if [ "$NOSSH" -eq '0' ]; then
+	if ! [ -S ~/.ssh/"master-getroot@$BROTHER:22" ]; then
+		screen -S lxcpickupstopsshmastersocket$$ -dm ssh $SSHOPTS "getroot@$BROTHER"
+	fi
+fi
+
+if ! lxc-checkbrother; then
+	echo 'Brother is dead!' >&2
+	exit 1
+fi
+
+if ! [ -f /var/run/lxc-pickedup ]; then
+	echo "There's no picked up containers" >&2
+	exit 1
+fi
+
+for CONTAINER in $(cat /var/run/lxc-pickedup); do
+	STATUS=$(lxc-status "$CONTAINER")
+	case $STATUS in
+		STOPPED)
+			echo "Container \"$CONTAINER\" is already stopped." >&2
+			;;
+		*)
+			if [ "$NOSSH" -eq '0' ]; then
+				if [ "$(ssh $SSHOPTS getroot@"$BROTHER" lxc-status "${CONTAINER}")" = "RUNNING" ]; then
+					# split-brain situation
+
+					if ! lxc-is-master; then
+						date +'[%Y-%m-%d %H:%M:%S] lxc-pickup-stop: split-brain, stopping '"$CONTAINER" >> /var/log/ha.log
+						lxc-stop -n "$CONTAINER"
+						continue
+					fi
+					date +'[%Y-%m-%d %H:%M:%S] lxc-pickup-stop: split-brain, pushing '"$CONTAINER" >> /var/log/ha.log
+				fi
+			fi
+			if [ "$NOSSH" -eq '0' ]; then
+				ssh $SSHOPTS getroot@"$BROTHER" /opt/lxc/bin/lxc-stop -n "${CONTAINER}"
+			fi
+			PIDFILEPREFIX="/var/run/clsync-$CONTAINER"
+			lxcdir=$(grep 'LXC_CONF_DIR:' /etc/lxctl/lxctl.yaml  | awk -F "'" '{print $2}')
+
+			lxc-clsync-stop "$CONTAINER"
+			ionice -c 3 clsync --exit-on-no-events -x 23 -x 24 -z "$PIDFILEPREFIX"-brother.pid -K lxc-brother -l "$CONTAINER" --status-file "$lxcdir"/"$CONTAINER"/clsync-brother.status -W "$lxcdir"/"$CONTAINER" --background=0 &&
+			lxc-stop -n "$CONTAINER"
+			ionice -c 3 clsync --only-initialsync  -x 23 -x 24 -z "$PIDFILEPREFIX"-brother.pid -K lxc-brother -l "$CONTAINER" --status-file "$lxcdir"/"$CONTAINER"/clsync-brother.status -W "$lxcdir"/"$CONTAINER" --background=0
+
+			if [ "$NOSSH" -eq '0' ]; then
+				ssh $SSHOPTS getroot@"$BROTHER" screen -dm -S lxcstart"${CONTAINER}" /opt/lxc/bin/lxc-start -d -n "${CONTAINER}"
+			fi
+			;;
+	esac
+done
+
+rm -f /var/run/lxc-pickedup
+
+exit 0

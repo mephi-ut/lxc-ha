@@ -1,0 +1,120 @@
+#!/bin/bash
+
+if [ ! -x "$(which lxc-info 2>/dev/null)" ]
+then
+	echo "E: lxc-info - no such file" >&2
+	exit 1
+fi
+
+BROTHER=$(brothername)
+BACKUP=$(backuphost)
+
+SSHOPTS='
+-o TCPKeepAlive=yes
+-o ControlMaster=auto
+-o ControlPath=~/.ssh/master-%r@%h:%p
+-o ConnectTimeout=1
+'
+
+NOSSH=0
+if [ "$(ssh -o ConnectTimeout=1 -o ControlMaster=no "getroot@$BROTHER" echo CHECK 2>/dev/null)" != "CHECK" ]; then
+	NOSSH=1
+fi
+
+if [ "$NOSSH" -eq '0' ]; then
+	if ! [ -S ~/.ssh/"master-getroot@$BROTHER:22" ]; then
+		screen -S lxclistsshmastersocket$$ -dm ssh $SSHOPTS "getroot@$BROTHER"
+	fi
+fi
+
+function clsyncstatuschar() {
+	CLSYNCSTATUS="$1"
+
+	case "$CLSYNCSTATUS" in
+		starting)
+			echo "S"
+			;;
+		initsync)
+			echo "I"
+			;;
+		running)
+			echo "R"
+			;;
+		exiting)
+			echo "E"
+			;;
+		terminating)
+			echo "T"
+			;;
+		rehashing)
+			echo "r"
+			;;
+		"")
+			echo " "
+			;;
+		*)
+			echo "?"
+			;;
+	esac
+
+	return 0
+}
+
+function clsyncstatusstr() {
+	BROTHER="$1"
+	REMOTE="$2"
+	STATUSFILE="$3"
+	PIDFILE="$4"
+
+	CLSYNCSTATUS="$(cat "$STATUSFILE" 2>/dev/null)"
+	CLSYNCSTR=$(clsyncstatuschar "$CLSYNCSTATUS")
+	if pgrep -F "$PIDFILE" >/dev/null 2>&1; then
+		CLSYNCSTR="[ $CLSYNCSTR ]"
+	else
+		if [ "$NOSSH" -eq "1" ]; then
+			CLSYNCSTR="? $CLSYNCSTR ?"
+		else
+			if ssh $SSHOPTS getroot@"$BROTHER" ls -d "$STATUSFILE" >/dev/null 2>/dev/null; then
+				CLSYNCSTR="  $CLSYNCSTR  "
+			else
+				CLSYNCSTR="     "
+			fi
+		fi
+	fi
+
+	echo "$CLSYNCSTR"
+	return 0;
+}
+
+for _STATUS in RUNNING FROZEN STOPPED
+do
+	echo ${_STATUS}
+
+	for _CONTAINER in $(lxc-ls)
+	do
+		if lxc-info -n ${_CONTAINER} 2>&1 | grep -qs "${_STATUS}"
+		then
+			REMOTESTR='unknown'
+			if [ "$NOSSH" -eq '0' ]; then
+				REMOTESTR=''
+				if [ "$(ssh $SSHOPTS getroot@"$BROTHER" lxc-status "${_CONTAINER}" 2>/dev/null)" = "RUNNING" ]; then
+					REMOTESTR="remote"
+				fi
+			fi
+			AUTOSTR=''
+			if [ -e /etc/lxc/auto/${_CONTAINER} ]; then
+				AUTOSTR="auto"
+			fi
+			DEVICEINFO=($(df -h /srv/lxc/"$_CONTAINER"/ | tail -1 | awk '{print $4" "$5" "$1}' | tr "/" " "))
+			DEVICESTR=${DEVICEINFO[3]}
+			FSPACESTR=${DEVICEINFO[0]}
+
+			CLSYNCBROTHERSTR="$(clsyncstatusstr "$BROTHER" "$BROTHER" "/srv/lxc/${_CONTAINER}/clsync-brother.status" "/var/run/clsync-${_CONTAINER}-brother.pid")"
+			CLSYNCBACKUPSTR="$(clsyncstatusstr  "$BROTHER" "$BACKUP"  "/srv/lxc/${_CONTAINER}/clsync-backup.status"  "/var/run/clsync-${_CONTAINER}-backup.pid")"
+
+			printf "\t%-8s%-8s%-16s%-5s%-5s %-6s %4s\n" "$AUTOSTR" "$REMOTESTR" "${_CONTAINER}" "$CLSYNCBROTHERSTR" "$CLSYNCBACKUPSTR" "$DEVICESTR" "$FSPACESTR"
+		fi
+	done
+	echo
+done
+

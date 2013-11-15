@@ -1,0 +1,34 @@
+#!/bin/bash
+BROTHER=$(brothername)
+
+TIMEOUT=600
+SSHOPTS='
+-o TCPKeepAlive=yes
+-o ControlMaster=auto
+-o ControlPath=~/.ssh/master-%r@%h:%p
+-o ConnectTimeout=1
+'
+
+while [ "$SECONDS" -le "$TIMEOUT" ]; do
+	if ping -w 1 -qc 5 -i 0.1 $BROTHER > /dev/null; then
+		NOSSH=0
+		if [ "$(ssh -o ConnectTimeout=1 -o ControlMaster=no "getroot@$BROTHER" echo CHECK 2>/dev/null)" != "CHECK" ]; then
+			NOSSH=1
+		fi
+
+		if [ "$NOSSH" -eq '0' ]; then
+			if ! [ -S ~/.ssh/"master-getroot@$BROTHER:22" ]; then
+				screen -S lxccheckbrothersshtobrother$$ -dm ssh $SSHOPTS "getroot@$BROTHER"
+			fi
+
+			if ssh $SSHOPTS "getroot@$BROTHER" lxc-ready; then
+				# Seems, that everything OK with the brother
+				exit 0
+			fi
+		fi
+	fi
+	sleep 1
+done
+
+# Seems, that brother is dead
+exit 1

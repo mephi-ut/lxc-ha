@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+_LXC_DIRECTORY="/srv/lxc"
+
+if [ ! -e "${_LXC_DIRECTORY}" ]
+then
+	echo "E: ${_LXC_DIRECTORY}: no such directory." >&2
+	exit 1
+fi
+
+cd "${_LXC_DIRECTORY}"
+
+_DIRECTORIES="$(find . -maxdepth 1 \( -type d -o -type l \) -and -not -name ".*" -and -not -name lost+found | sort)"
+
+for _DIRECTORY in ${_DIRECTORIES}
+do
+	ls -d ${@} $(basename ${_DIRECTORY})
+done

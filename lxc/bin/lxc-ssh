@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ "$UID" = "0" ]; then
+	login='getroot'
+else
+	login=$(whoami)
+fi
+
+ssh ${login}@$@
+

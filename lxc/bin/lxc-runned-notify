@@ -1,0 +1,13 @@
+#!/bin/bash
+
+BROTHER=$(brothername)
+
+SSHOPTS='
+-o TCPKeepAlive=yes
+-o ControlMaster=auto
+-o ControlPath=~/.ssh/master-%r@%h:%p
+-o ConnectTimeout=1
+'
+
+exec ssh $SSHOPTS getroot@"$BROTHER" echo "\"$(lxc-runned)\"" \> /var/run/lxc-runned.brother
+

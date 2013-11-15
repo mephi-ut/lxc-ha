@@ -1,0 +1,58 @@
+#!/bin/bash
+
+
+host="$1"
+lxcdir=$(grep 'LXC_CONF_DIR:' /etc/lxctl/lxctl.yaml  | awk -F "'" '{print $2}')
+
+PIDFILEPREFIX="/var/run/clsync-$host"
+BROTHER=$(brothername)
+
+
+if [ -d "$lxcdir/$host" ]; then
+
+	case "$host" in
+		galera_*)
+			exit 0
+			;;
+		test_*)
+			exit 0
+			;;
+		nis)
+			exit 0
+			;;
+	esac
+
+	if lxc-checkbrother; then
+		if pgrep -F "$PIDFILEPREFIX"-brother.pid 2>/dev/null >/dev/null; then
+			echo "clsync (brother) for container \"$host\" is already runned on this node." >&2
+		else
+			if ssh getroot@$BROTHER pgrep -F "$PIDFILEPREFIX"-brother.pid 2>/dev/null >/dev/null; then
+				echo "clsync (brother) for container \"$host\" is already runned on remote node." >&2
+			else
+				ssh getroot@$BROTHER rm -f "$lxcdir"/"$host"/clsync-brother.status
+				rm -f "$lxcdir"/"$host"/clsync-brother.status
+				ionice -c 3 clsync -x 23 -x 24 -z "$PIDFILEPREFIX"-brother.pid -K lxc-brother -l "$host" --status-file "$lxcdir"/"$host"/clsync-brother.status -W "$lxcdir"/"$host"
+			fi
+		fi
+	else
+		echo 'Brother is unreachable. Cannot determine is the clsync instance required.' >&2
+	fi
+
+	if pgrep -F "$PIDFILEPREFIX"-backup.pid 2>/dev/null >/dev/null; then
+		echo "clsync (backup) for container \"$host\" is already runned on this node." >&2
+	else
+		if ssh getroot@$BROTHER pgrep -F "$PIDFILEPREFIX"-backup.pid 2>/dev/null >/dev/null; then
+			echo "clsync (backup) for container \"$host\" is already runned on remote node." >&2
+		else
+			ssh getroot@$BROTHER rm -f "$lxcdir"/"$host"/clsync-backup.status
+			rm -f "$lxcdir"/"$host"/clsync-backup.status
+			ionice -c 3 clsync -x 23 -x 24 -z "$PIDFILEPREFIX"-backup.pid  -K lxc-backup  -l "$host" --status-file "$lxcdir"/"$host"/clsync-backup.status  -W "$lxcdir"/"$host"
+		fi
+	fi
+	exit 0
+
+else
+	echo "There's no such container: \"$host\"" >&2
+	exit 3
+fi
+

@@ -1,0 +1,46 @@
+#!/bin/bash
+
+
+host="$1"
+#lxcdir=$(grep 'LXC_CONF_DIR:' /etc/lxctl/lxctl.yaml  | awk -F "'" '{print $2}')
+
+PIDFILEPREFIX=/var/run/clsync-"$host"
+
+PIDFILEBROTHER="${PIDFILEPREFIX}-brother.pid"
+PIDFILEBACKUP="${PIDFILEPREFIX}-backup.pid"
+
+function clsyncstop() {
+	PIDFILE="$1"
+
+	if [ -f "$PIDFILE" ]; then
+		PID="$(cat "$PIDFILE")"
+		pkill -P $PID
+		i=0
+		while pgrep -P $PID > /dev/null 2>/dev/null; do
+			if [ "$i" -ge "100" ]; then
+				pkill -9 -P $PID
+				break
+			fi
+			i=$[ $i + 1 ]
+			sleep 0.1
+		done
+		kill $PID
+		i=0
+		while ps $PID > /dev/null 2>/dev/null; do
+			if [ "$i" -ge "100" ]; then
+				kill -9 $PID
+				break
+			fi
+			i=$[ $i + 1 ]
+			sleep 0.1
+		done
+	else
+		echo "There's no pid-file \"$PIDFILE\"" >&2
+	fi
+}
+
+clsyncstop "$PIDFILEBROTHER"
+clsyncstop "$PIDFILEBACKUP"
+
+exit 0
+

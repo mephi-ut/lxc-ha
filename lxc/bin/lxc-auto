@@ -1,0 +1,12 @@
+#!/bin/bash
+
+
+host="$1"
+lxcdir=$(grep 'LXC_CONF_DIR:' /etc/lxctl/lxctl.yaml  | awk -F "'" '{print $2}')
+
+if [ -d "$lxcdir/$host" ]; then
+	ln -s /srv/lxc/$host/config /etc/lxc/auto/$host
+else
+	echo "There's no such container: <$host>" >&2
+fi
+

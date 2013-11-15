@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# IP-telephony: asterisk
+for pid in $(lxc-ps --lxc | grep "^antey\|^lascivus" | grep asterisk | awk '{print $2}'); do
+	ionice -c 1 -n 0 -p ${pid}
+done
+
+
+# IP-telephony: mysqld
+for pid in $(lxc-ps --lxc | grep ^artemida | grep mysqld | awk '{print $2}'); do
+	ionice -c 2 -n 0 -p ${pid}
+done
+
+

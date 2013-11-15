@@ -1,0 +1,29 @@
+LXC_CONF_DIR=$(grep "^  LXC_CONF_DIR: '" /etc/lxctl/lxctl.yaml | awk -F "'" '{print $2}')
+
+#grep lxc.network.hwaddr /srv/lxc/*/config | awk '{print $3}' | sort -u
+#grep lxc.network.hwaddr /srv/lxc/*/config | sed -e 's#config.*=##g' | tr '/#' '   ' | tr '[:upper:]' '[:lower:]' | awk '{print $4" "$3}' | sort | grep --color=auto "[^ ]*\$"
+grep '^[^#]*lxc.network.hwaddr' "$LXC_CONF_DIR"/*/config | sed -e 's#config.*=##g' | tr '/#' '   ' | tr '[:upper:]' '[:lower:]' | awk '{print $4" "$3}' | sort | awk -F ':' '{print $1":"$2":"$3":"$4":\033[1;31m"$5"\033[0m:"$6}'
+
+variants=$(grep '^[^#]*lxc.network.hwaddr' "$LXC_CONF_DIR"/*/config | sed -e 's#config.*=##g' | tr '/#' '   ' | tr '[:upper:]' '[:lower:]' | awk '{print $4}' | awk -F ':' '{print $5}' | uniq)
+
+i=0
+
+hostmac=$(cat /etc/hostmac)
+
+while [ "${i}" -le "255" ]; do
+	octet=$(printf '%02x' $i)
+	q=1
+	for variant in $variants; do
+		if [ "$octet" = "$variant" ]; then
+			q=0
+			break
+		fi
+	done
+	if [ "$q" -ne '0' ]; then
+		printf "\nRecommended MAC-prefix: f2:00:00:$hostmac:\033[1;31m$octet\033[0m:XX\n"
+		break
+	fi
+	(( i++ ))
+done
+
+

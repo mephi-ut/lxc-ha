@@ -1,0 +1,10 @@
+#!/bin/bash
+
+masterhost=$(awk '{if ($1 == "host") {print $2; exit 0;}}' < /etc/csync2/csync2.cfg)
+
+if [ "$HOSTNAME" = "$masterhost" ]; then
+	exit 0
+fi
+
+exit 1
+

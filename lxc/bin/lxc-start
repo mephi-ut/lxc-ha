@@ -1,0 +1,63 @@
+#!/bin/bash
+PATH=/opt/lxc/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+LXC_CONF_DIR=$(grep "^[ ]*LXC_CONF_DIR:[ ]*'[^'][^']*'" /etc/lxctl/lxctl.yaml | awk -F "'" '{print $2}')
+
+addcfgpath=1
+nextisname=0
+until [ -z "$1" ]; do
+	arg=$1
+	case "$arg" in
+		-n)
+			nextisname=1
+			;;
+		--name)
+			nextisname=1
+			;;
+		-f)
+			addcfgpath=0
+			;;
+		--rcfile)
+			addcfgpath=0
+			;;
+		*)
+			if [ "$nextisname" -ne '0' ]; then
+				cname="$arg"
+				nextisname=0
+			fi
+			CONTAINER="$arg"
+			;;
+	esac
+	args="$args '$arg'"
+	shift
+done
+
+if [ "$addcfgpath" -ne '0' ]; then
+	args="$args -f '$LXC_CONF_DIR/$cname/config'"
+fi
+
+REMOTESTATUS="$(ssh getroot@`brothername` lxc-status "$CONTAINER")"
+if [ "$REMOTESTATUS" = "RUNNING" ]; then
+	echo "Contanier \"$CONTANIER\" is already runned on brother." >&2
+	exit 0
+fi
+
+sleep 10 && lxc-clsync-startstop "$CONTAINER" &
+
+
+if [ "$(lxc-status "$CONTAINER")" = "STOPPED" ]; then
+#	i=0
+#	while ip a s "$CONTAINER"-eth"$i" >/dev/null 2>/dev/null; do
+#		ip l d "$CONTAINER"-eth"$i"
+#		i=$[ $i + 1 ]
+#	done 
+
+	for iface in $(awk '{ if($1=="lxc.network.veth.pair") {print $3} }' < "$LXC_CONF_DIR/$cname/config"); do
+		ip l d "$iface" 2>/dev/null
+	done;
+fi
+
+eval "/usr/bin/lxc-start $args"
+
+echo "$HOSTNAME" > "$LXC_CONF_DIR/$CONTAINER/rootfs/etc/rhostname"
+

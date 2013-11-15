@@ -1,0 +1,1 @@
+exec test -f /var/run/lxc-ready
