@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -16,5 +16,12 @@ _DIRECTORIES="$(find . -maxdepth 1 \( -type d -o -type l \) -and -not -name ".*"
 
 for _DIRECTORY in ${_DIRECTORIES}
 do
-	ls -d ${@} $(basename ${_DIRECTORY})
+	CONTAINER="$(basename ${_DIRECTORY})"
+	case "$CONTAINER" in
+		template_*)
+			;;
+		*)
+			ls -d ${@} "$CONTAINER"
+			;;
+	esac
 done

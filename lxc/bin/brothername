@@ -1,0 +1,5 @@
+#!/bin/bash
+
+HOSTS=($(awk '{if($1 == "host") {print $2" "$3; exit;}}' < /etc/csync2/csync2.cfg | tr -d ';'))
+
+[[ "${HOSTS[0]}" = "$HOSTNAME" ]] && echo "${HOSTS[1]}" || echo "${HOSTS[0]}"

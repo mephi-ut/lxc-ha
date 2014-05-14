@@ -1,0 +1,6 @@
+#!/bin/bash
+PATH=/opt/lxc/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+export READONLY=1
+
+exec bash -x lxc-start $@

@@ -40,6 +40,9 @@ function clsyncstatuschar() {
 		running)
 			echo "R"
 			;;
+		"thread gc")
+			echo "R"
+			;;
 		exiting)
 			echo "E"
 			;;
@@ -94,6 +97,15 @@ do
 	do
 		if lxc-info -n ${_CONTAINER} 2>&1 | grep -qs "${_STATUS}"
 		then
+			READONLYSTR='';
+			if [[ "$_STATUS" = "RUNNING" ]]; then
+				INIT_PID=$(lxc-info -n "$_CONTAINER" | awk '{if($1=="pid:") print $2}')
+
+				if [ "$(awk '{print $5}' < /proc/"$INIT_PID"/mountinfo | grep /rootfs-readonly | head -1 | sed -e 's%^.*/%%g')" != "" ]; then
+					READONLYSTR='readonly'
+				fi
+			fi
+
 			REMOTESTR='unknown'
 			if [ "$NOSSH" -eq '0' ]; then
 				REMOTESTR=''
@@ -112,7 +124,7 @@ do
 			CLSYNCBROTHERSTR="$(clsyncstatusstr "$BROTHER" "$BROTHER" "/srv/lxc/${_CONTAINER}/clsync-brother.status" "/var/run/clsync-${_CONTAINER}-brother.pid")"
 			CLSYNCBACKUPSTR="$(clsyncstatusstr  "$BROTHER" "$BACKUP"  "/srv/lxc/${_CONTAINER}/clsync-backup.status"  "/var/run/clsync-${_CONTAINER}-backup.pid")"
 
-			printf "\t%-8s%-8s%-16s%-5s%-5s %-6s %4s\n" "$AUTOSTR" "$REMOTESTR" "${_CONTAINER}" "$CLSYNCBROTHERSTR" "$CLSYNCBACKUPSTR" "$DEVICESTR" "$FSPACESTR"
+			printf "\t%-8s%-8s%-16s%-5s%-5s %-6s %4s %8s\n" "$AUTOSTR" "$REMOTESTR" "${_CONTAINER}" "$CLSYNCBROTHERSTR" "$CLSYNCBACKUPSTR" "$DEVICESTR" "$FSPACESTR" "$READONLYSTR"
 		fi
 	done
 	echo

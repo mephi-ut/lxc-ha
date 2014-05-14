@@ -21,5 +21,5 @@ do
                         printf "%s\n" "${_CONTAINER}"
                 fi
         done
-done
+done | sort
 

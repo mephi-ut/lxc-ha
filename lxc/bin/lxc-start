@@ -3,6 +3,11 @@ PATH=/opt/lxc/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
 LXC_CONF_DIR=$(grep "^[ ]*LXC_CONF_DIR:[ ]*'[^'][^']*'" /etc/lxctl/lxctl.yaml | awk -F "'" '{print $2}')
 
+function is_readonly() {
+	[ "$READONLY" != "" ]
+	return $?
+}
+
 addcfgpath=1
 nextisname=0
 until [ -z "$1" ]; do
@@ -22,10 +27,9 @@ until [ -z "$1" ]; do
 			;;
 		*)
 			if [ "$nextisname" -ne '0' ]; then
-				cname="$arg"
+				CONTAINER="$arg"
 				nextisname=0
 			fi
-			CONTAINER="$arg"
 			;;
 	esac
 	args="$args '$arg'"
@@ -33,31 +37,84 @@ until [ -z "$1" ]; do
 done
 
 if [ "$addcfgpath" -ne '0' ]; then
-	args="$args -f '$LXC_CONF_DIR/$cname/config'"
+	if is_readonly; then
+		args="$args -f '$LXC_CONF_DIR/$CONTAINER/config-readonly'"
+	else
+		args="$args -f '$LXC_CONF_DIR/$CONTAINER/config'"
+	fi
 fi
 
-REMOTESTATUS="$(ssh getroot@`brothername` lxc-status "$CONTAINER")"
-if [ "$REMOTESTATUS" = "RUNNING" ]; then
-	echo "Contanier \"$CONTANIER\" is already runned on brother." >&2
+if [ "$CONTAINER" = '' ]; then
+	echo "No container name specified" >&2
 	exit 0
 fi
 
-sleep 10 && lxc-clsync-startstop "$CONTAINER" &
+case "$CONTAINER" in
+	percona_*)
+		;;
+	galera_*)
+#		IFACENAME=${CONTAINER/galera_/g}
+#		if [ "$(lxc-status "$CONTAINER")" = "STOPPED" ]; then
+#			i=0
+#			while ip a s "$IFACENAME"-eth"$i" >/dev/null 2>/dev/null; do
+#				ip l d "$IFACENAME"-eth"$i"
+#				i=$[ $i + 1 ]
+#			done 
+#		fi
+		;;
+	test_*)
+		;;
+	nis)
+		;;
+	*)
+		if ! is_readonly; then
+			REMOTESTATUS="$(ssh getroot@`brothername` lxc-status "$CONTAINER")"
+			if [ "$REMOTESTATUS" = "RUNNING" ]; then
+				echo "Container \"$CONTAINER\" is already runned on brother." >&2
+				exit 0
+			fi
+
+			sleep 10 && lxc-clsync-startstop "$CONTAINER" &
+		fi
+		;;
+esac
 
 
-if [ "$(lxc-status "$CONTAINER")" = "STOPPED" ]; then
-#	i=0
-#	while ip a s "$CONTAINER"-eth"$i" >/dev/null 2>/dev/null; do
-#		ip l d "$CONTAINER"-eth"$i"
-#		i=$[ $i + 1 ]
-#	done 
+#sleep 10 && lxc-clsync-startstop "$CONTAINER" &
 
-	for iface in $(awk '{ if($1=="lxc.network.veth.pair") {print $3} }' < "$LXC_CONF_DIR/$cname/config"); do
-		ip l d "$iface" 2>/dev/null
-	done;
+STATUS="$(lxc-status "$CONTAINER")"
+if [ "$STATUS" != "STOPPED" ]; then
+	echo "Container \"$CONTAINER\" is already \"$STATUS\""
+	exit 0
+fi
+
+for iface in $(awk '{ if($1=="lxc.network.veth.pair") {print $3} }' < "$LXC_CONF_DIR/$CONTAINER/config"); do
+	ip l d "$iface" 2>/dev/null
+done
+
+if is_readonly; then
+	mkdir -p "$LXC_CONF_DIR/$CONTAINER/rootfs-readonly"
+	i=0
+	while umount "$LXC_CONF_DIR/$CONTAINER/rootfs-readonly" 2>/dev/null; do
+		[[ "$i" -le "32" ]] &&
+			break
+		(( i++ ))
+	done
+	mount --bind "$LXC_CONF_DIR/$CONTAINER/rootfs" "$LXC_CONF_DIR/$CONTAINER/rootfs-readonly"
+	mount -o remount,ro,bind "$LXC_CONF_DIR/$CONTAINER/rootfs-readonly"
+	(
+		sed -e 's%/rootfs%/rootfs-readonly%g' < "$LXC_CONF_DIR/$CONTAINER/config"
+		echo 'lxc.pivotdir = '"$LXC_CONF_DIR/$CONTAINER/rootfs-readonly/tmp/lxc_pivotdir"
+		echo 'lxc.mount.entry = '"$LXC_CONF_DIR/$CONTAINER/rootfs/dev"' '"$LXC_CONF_DIR/$CONTAINER/rootfs-readonly/dev"' bind default,bind 0 0'
+	) > "$LXC_CONF_DIR/$CONTAINER/config-readonly"
 fi
 
 eval "/usr/bin/lxc-start $args"
 
-echo "$HOSTNAME" > "$LXC_CONF_DIR/$CONTAINER/rootfs/etc/rhostname"
+if is_readonly; then
+	umount "$LXC_CONF_DIR/$CONTAINER/rootfs-readonly"
+	rm -rf "$LXC_CONF_DIR/$CONTAINER/rootfs-readonly"
+fi
+
+(echo "$HOSTNAME" > "$LXC_CONF_DIR/$CONTAINER/rootfs/etc/rhostname") 2>/dev/null
 

@@ -1,20 +1,31 @@
 #!/bin/bash
 PATH=/opt/lxc/bin:/usr/lib/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin
 
+date >> /tmp/lxc-pickup-start.log
 
 if lxc-checkbrother; then
 	echo 'Brother is alive!' >&2
 	exit 1
 fi
 
+rm -f ~/.ssh/master-*
+
 if [ -f /var/run/lxc-pickedup ]; then
-	echo "There's already picked up containers. Aborting." >&2
-	exit 1
+	echo "There're already picked up containers." >&2
 fi
 
-mv /var/run/lxc-runned.brother /var/run/lxc-pickedup
+pushd /srv/lxc > /dev/null
+for CONTAINER in *; do
+	printf "%s\t" "$CONTAINER"
+	cat /srv/lxc/"$CONTAINER"/priority 2>/dev/null || echo 128
+done | sort -fk 1b,1 > /var/run/lxc-priorities
+popd > /dev/null
 
-for CONTAINER in $(cat /var/run/lxc-pickedup); do
+grep -v '^\(galera\|percona\|test\)_' /var/run/lxc-runned.brother | sort -fk 1b,1 > /var/run/lxc-pickedup
+
+join -i -1 1 -2 1 /var/run/lxc-priorities /var/run/lxc-pickedup | sort -nk 2 > /var/run/lxc-pickup-priorities
+
+for CONTAINER in $(awk '{print $1}' < /var/run/lxc-pickup-priorities); do
 	STATUS=$(lxc-status "$CONTAINER")
 	case $STATUS in
 		STOPPED)

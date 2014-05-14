@@ -1,0 +1,42 @@
+#!/bin/bash
+
+OPERATOR="$1"; shift
+PRIORITY="$1"; shift
+
+if [ "$OPERATOR" = "" ]; then
+	OPERATOR='-lt'
+fi
+
+if [ "$PRIORITY" = "" ]; then
+	PRIORITY=128
+fi
+
+set -e
+
+_LXC_DIRECTORY="/srv/lxc"
+
+if [ ! -e "${_LXC_DIRECTORY}" ]
+then
+	echo "E: ${_LXC_DIRECTORY}: no such directory." >&2
+	exit 1
+fi
+
+cd "${_LXC_DIRECTORY}"
+
+_DIRECTORIES="$(find . -maxdepth 1 \( -type d -o -type l \) -and -not -name ".*" -and -not -name lost+found | sort)"
+
+for _DIRECTORY in ${_DIRECTORIES}
+do
+	PRIORITY_CURRENT="$(cat "$_DIRECTORY"/priority 2>/dev/null || echo 128)"
+
+	if [ "$PRIORITY_CURRENT" "$OPERATOR" "$PRIORITY" ]; then
+		CONTAINER="$(basename ${_DIRECTORY})"
+		case "$CONTAINER" in
+			template_*)
+				;;
+			*)
+				ls -d ${@} "$CONTAINER"
+				;;
+		esac
+	fi
+done
